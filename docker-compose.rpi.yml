@@ -19,6 +19,9 @@
 
 services:
   backend:
+    build:
+      args:
+        UV_EXTRAS: ""
     deploy:
       resources:
         limits:

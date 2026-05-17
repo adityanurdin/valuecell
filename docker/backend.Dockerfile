@@ -9,14 +9,24 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir uv
 
-# Install Python dependencies first (better layer cache)
+# Install Python dependencies first (better layer cache).
+# lancedb is optional (extras research) — not available on ARMv6 Raspberry Pi.
 COPY python/pyproject.toml python/uv.lock ./
-RUN uv sync --frozen --no-install-project
+ARG UV_EXTRAS=
+RUN if [ -n "${UV_EXTRAS}" ]; then \
+      uv sync --frozen --no-install-project --extra "${UV_EXTRAS}"; \
+    else \
+      uv sync --frozen --no-install-project; \
+    fi
 
 COPY python/ ./
 COPY .env.example /app/.env.example
 
-RUN uv sync --frozen
+RUN if [ -n "${UV_EXTRAS}" ]; then \
+      uv sync --frozen --extra "${UV_EXTRAS}"; \
+    else \
+      uv sync --frozen; \
+    fi
 
 COPY docker/entrypoint-backend.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

@@ -10,23 +10,35 @@ This prevents import-time failures and allows the ResearchAgent to run in a
 "tools-only" mode without knowledge search when embeddings are not configured.
 """
 
-from typing import Optional
+from typing import Any, Optional
 
-from agno.vectordb.lancedb import LanceDb
-from agno.vectordb.search import SearchType
 from loguru import logger
+
+try:
+    from agno.vectordb.lancedb import LanceDb
+    from agno.vectordb.search import SearchType
+except ImportError:
+    LanceDb = None  # type: ignore[misc, assignment]
+    SearchType = None  # type: ignore[misc, assignment]
 
 import valuecell.utils.model as model_utils_mod
 from valuecell.utils.db import resolve_lancedb_uri
 
 
-def get_vector_db() -> Optional[LanceDb]:
+def get_vector_db() -> Optional[Any]:
     """Create and return the LanceDb instance, or None if embeddings are unavailable.
 
     This function is safe to call at runtime; it will not raise during normal
     missing-configuration scenarios. Unexpected errors are logged and result in
     a None return to enable graceful degradation.
     """
+    if LanceDb is None or SearchType is None:
+        logger.warning(
+            "lancedb is not installed (optional extra). "
+            "Install with: uv sync --extra research"
+        )
+        return None
+
     try:
         embedder = model_utils_mod.get_embedder_for_agent("research_agent")
     except Exception as e:
