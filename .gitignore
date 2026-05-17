@@ -233,3 +233,4 @@ logs
 python/configs/
 
 *.key
+*.tar.gz
