@@ -1,8 +1,11 @@
 # ValueCell — run with Docker Compose
 #
-# Quick start:
+# Quick start (PC / Mac / Pi 4 64-bit):
 #   cp .env.example .env          # add OPENROUTER_API_KEY, etc.
 #   docker compose up --build -d
+#
+# Raspberry Pi (ARM): see docker-compose.rpi.yml
+#   docker compose -f docker-compose.yml -f docker-compose.rpi.yml up backend -d --build
 #
 # Open UI:  http://localhost:1420
 # API:      http://localhost:8000/api/v1/healthz

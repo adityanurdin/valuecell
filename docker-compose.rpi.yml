@@ -1,0 +1,27 @@
+# Raspberry Pi / ARM overlay
+#
+# Pi Model B+ V1.2 (ARMv6, 512MB): build frontend on a PC, run backend only:
+#   docker compose -f docker-compose.yml -f docker-compose.rpi.yml up backend -d --build
+#   Open API: http://<pi-ip>:8000/api/v1/healthz
+#   Use UI from another machine pointing at the Pi API, or build UI elsewhere.
+#
+# Pi 3 / 4 (arm/v7 or arm64): full stack (first build may take 30–60+ minutes):
+#   docker compose -f docker-compose.yml -f docker-compose.rpi.yml --profile ui up -d --build
+#
+# Force platform if auto-detect pulls wrong arch:
+#   export DOCKER_DEFAULT_PLATFORM=linux/arm/v7   # 32-bit Pi OS
+#   export DOCKER_DEFAULT_PLATFORM=linux/arm64  # 64-bit Pi OS
+
+services:
+  backend:
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+
+  frontend:
+    profiles: ["ui"]
+    deploy:
+      resources:
+        limits:
+          memory: 512M

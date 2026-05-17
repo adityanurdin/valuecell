@@ -1,12 +1,13 @@
-# ValueCell backend API + in-process strategy agents
-FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+# ValueCell backend — multi-arch (amd64, arm64, arm/v7, arm/v5 for older Pis)
+# Uses official Python image + pip-installed uv (ghcr.io/astral-sh/uv has no arm/v6 manifest).
+FROM python:3.12-slim-bookworm
 
 WORKDIR /app/python
 
-# Runtime deps (healthcheck, optional browser automation)
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir uv
 
 # Install Python dependencies first (better layer cache)
 COPY python/pyproject.toml python/uv.lock ./
@@ -29,7 +30,7 @@ ENV PYTHONUNBUFFERED=1 \
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
     CMD curl -fsS "http://127.0.0.1:${API_PORT}/api/v1/healthz" || exit 1
 
 ENTRYPOINT ["/entrypoint.sh"]
