@@ -8,8 +8,6 @@ from typing import Iterable, List, Optional, Sequence
 import aiofiles
 import aiohttp
 from agno.agent import Agent
-from edgar import Company
-from edgar.entity.filings import EntityFilings
 from loguru import logger
 
 from valuecell.agents.sources import (
@@ -126,6 +124,18 @@ async def _write_and_ingest(
     return results
 
 
+def _edgar_imports():
+    try:
+        from edgar import Company
+        from edgar.entity.filings import EntityFilings
+    except ImportError as exc:
+        raise RuntimeError(
+            "edgartools is required for SEC filing tools. "
+            "Install with: uv sync --extra full"
+        ) from exc
+    return Company, EntityFilings
+
+
 async def fetch_periodic_sec_filings(
     cik_or_ticker: str,
     forms: List[str] | str = "10-Q",
@@ -153,6 +163,7 @@ async def fetch_periodic_sec_filings(
     Returns:
         List[SECFilingResult]
     """
+    Company, EntityFilings = _edgar_imports()
     req_forms = set(_ensure_list(forms)) or {"10-Q"}
     company = await asyncio.to_thread(lambda: Company(cik_or_ticker))
 
@@ -204,6 +215,7 @@ async def fetch_event_sec_filings(
     if sd and ed and sd > ed:
         raise ValueError("start_date cannot be after end_date")
 
+    Company, EntityFilings = _edgar_imports()
     req_forms = set(_ensure_list(forms)) or {"8-K"}
     company = await asyncio.to_thread(lambda: Company(cik_or_ticker))
 

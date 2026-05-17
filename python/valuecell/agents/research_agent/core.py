@@ -3,7 +3,6 @@ from typing import AsyncGenerator, Dict, Optional
 
 from agno.agent import Agent
 from agno.db.in_memory import InMemoryDb
-from edgar import set_identity
 from loguru import logger
 
 import valuecell.utils.model as model_utils_mod
@@ -61,7 +60,15 @@ class ResearchAgent(BaseAgent):
         # Configure EDGAR identity only when SEC_EMAIL is present
         sec_email = os.getenv("SEC_EMAIL")
         if sec_email:
-            set_identity(sec_email)
+            try:
+                from edgar import set_identity
+
+                set_identity(sec_email)
+            except ImportError:
+                logger.warning(
+                    "edgartools not installed; SEC identity not configured. "
+                    "Install with: uv sync --extra full"
+                )
         else:
             logger.warning(
                 "SEC_EMAIL not set; EDGAR identity is not configured for ResearchAgent."
