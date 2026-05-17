@@ -1,16 +1,17 @@
-# Raspberry Pi / ARM overlay
+# Raspberry Pi — backend + frontend on the same device
 #
-# Pi Model B+ V1.2 (ARMv6, 512MB): build frontend on a PC, run backend only:
-#   docker compose -f docker-compose.yml -f docker-compose.rpi.yml up backend -d --build
-#   Open API: http://<pi-ip>:8000/api/v1/healthz
-#   Use UI from another machine pointing at the Pi API, or build UI elsewhere.
+# Recommended (all Pis, including B+ 512MB):
+#   ./scripts/pi-deploy.sh
 #
-# Pi 3 / 4 (arm/v7 or arm64): full stack (first build may take 30–60+ minutes):
-#   docker compose -f docker-compose.yml -f docker-compose.rpi.yml --profile ui up -d --build
+# Builds the UI on the Pi host (less RAM than docker build), then packages
+# static files into a small nginx image. Backend builds inside Docker.
 #
-# Force platform if auto-detect pulls wrong arch:
-#   export DOCKER_DEFAULT_PLATFORM=linux/arm/v7   # 32-bit Pi OS
-#   export DOCKER_DEFAULT_PLATFORM=linux/arm64  # 64-bit Pi OS
+# Pi 4 / 64-bit with 2GB+ RAM — optional in-docker frontend build:
+#   FRONTEND_DOCKERFILE=docker/frontend.Dockerfile ./scripts/pi-deploy.sh
+#
+# Copy pre-built UI from another PC (if Bun fails on Pi B+ ARMv6):
+#   rsync -av frontend/build/client/ pi@host:~/valuecell/frontend/build/client/
+#   SKIP_FRONTEND_BUILD=1 ./scripts/pi-deploy.sh
 
 services:
   backend:
@@ -18,10 +19,15 @@ services:
       resources:
         limits:
           memory: 768M
+    healthcheck:
+      start_period: 180s
 
   frontend:
-    profiles: ["ui"]
+    build:
+      dockerfile: ${FRONTEND_DOCKERFILE:-docker/frontend.nginx.Dockerfile}
+      args:
+        VITE_API_BASE_URL: /api/v1
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 128M

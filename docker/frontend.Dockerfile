@@ -1,7 +1,11 @@
-# Build SPA (Node + Bun) and serve with nginx — multi-arch builder base
+# Build SPA inside Docker (Pi 3/4 with enough RAM+swap, or desktop).
+# For Pi B+ / 512MB: use scripts/pi-deploy.sh (host build + frontend.nginx.Dockerfile).
 FROM node:20-bookworm-slim AS builder
 
 WORKDIR /app
+
+# Limit Node/Bun memory during build (important on Raspberry Pi)
+ENV NODE_OPTIONS=--max-old-space-size=384
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl ca-certificates unzip \

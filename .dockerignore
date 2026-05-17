@@ -13,7 +13,9 @@
 **/.ruff_cache
 **/dist
 **/build
-frontend/build
+# Allow Pi nginx image to COPY pre-built SPA (scripts/pi-deploy.sh)
+!frontend/build
+!frontend/build/**
 
 # Local env and data (mounted at runtime)
 .env
