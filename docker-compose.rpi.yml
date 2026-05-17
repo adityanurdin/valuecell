@@ -1,10 +1,14 @@
 # Raspberry Pi — backend + frontend on the same device
 #
-# Recommended (all Pis, including B+ 512MB):
+# Recommended:
 #   ./scripts/pi-deploy.sh
 #
-# Builds the UI on the Pi host (less RAM than docker build), then packages
-# static files into a small nginx image. Backend builds inside Docker.
+# Pi B+ (ARMv6): Bun/Node cannot build on the Pi. On a PC/Mac first:
+#   ./scripts/export-frontend-build.sh
+#   scp frontend-build.tar.gz homepi@<pi>:~/valuecell/
+#   ./scripts/pi-deploy.sh    # auto-imports tarball + starts nginx
+#
+# Pi 3/4: may build on-device with Bun, or use export tarball too.
 #
 # Pi 4 / 64-bit with 2GB+ RAM — optional in-docker frontend build:
 #   FRONTEND_DOCKERFILE=docker/frontend.Dockerfile ./scripts/pi-deploy.sh
