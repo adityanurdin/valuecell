@@ -1,0 +1,29 @@
+# Git and IDE
+.git
+.gitignore
+.cursor
+.vscode
+.idea
+
+# Dependencies and build artifacts
+**/node_modules
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/dist
+**/build
+frontend/build
+
+# Local env and data (mounted at runtime)
+.env
+.env.*
+!.env.example
+
+# OS / logs
+.DS_Store
+**/*.log
+logs
+
+# Agent transcripts and misc
+agent-transcripts

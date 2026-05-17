@@ -27,7 +27,10 @@ import {
 } from "@/components/valuecell/form/exchange-form";
 import { TradingStrategyForm } from "@/components/valuecell/form/trading-strategy-form";
 import { StepIndicator } from "@/components/valuecell/step-indicator";
-import { TRADING_SYMBOLS } from "@/constants/agent";
+import {
+  getTradingSymbolsForExchange,
+  TRADING_SYMBOLS,
+} from "@/constants/agent";
 import {
   createAiModelSchema,
   createExchangeSchema,
@@ -126,6 +129,16 @@ const CreateStrategyModal: FC<CreateStrategyModalProps> = ({
       }
 
       form3.setFieldValue("strategy_name", newName);
+
+      const symbols = getTradingSymbolsForExchange(
+        exchange_id,
+        trading_mode,
+      );
+      form3.setFieldValue("symbols", symbols);
+      if ((exchange_id || "").toLowerCase() === "indodax") {
+        form3.setFieldValue("max_leverage", 1);
+      }
+
       setCurrentStep(3);
     },
   });
@@ -222,6 +235,7 @@ const CreateStrategyModal: FC<CreateStrategyModalProps> = ({
               form={form3}
               prompts={prompts}
               tradingMode={form2.state.values.trading_mode}
+              exchangeId={form2.state.values.exchange_id}
             />
           )}
         </div>

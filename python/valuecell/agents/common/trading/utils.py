@@ -18,6 +18,45 @@ from valuecell.agents.common.trading.models import (
     TradeType,
 )
 
+_BALANCE_META_KEYS = frozenset(
+    {"info", "timestamp", "datetime", "free", "used", "total", "debt"}
+)
+
+
+def parse_ccxt_balance_maps(balance: dict) -> tuple[dict[str, float], dict[str, float]]:
+    """Extract free/total maps from a CCXT balance (keys uppercased)."""
+    free_map: dict[str, float] = {}
+    total_map: dict[str, float] = {}
+
+    free_section = balance.get("free")
+    total_section = balance.get("total")
+    if isinstance(free_section, dict):
+        free_map = {str(k).upper(): float(v or 0.0) for k, v in free_section.items()}
+    if isinstance(total_section, dict):
+        total_map = {str(k).upper(): float(v or 0.0) for k, v in total_section.items()}
+
+    if not free_map or not total_map:
+        for key, account in balance.items():
+            if key in _BALANCE_META_KEYS or not isinstance(account, dict):
+                continue
+            code = str(key).upper()
+            if "free" in account:
+                free_map[code] = float(account.get("free") or 0.0)
+            if "total" in account:
+                total_map[code] = float(account.get("total") or 0.0)
+
+    if not total_map:
+        total_map = dict(free_map)
+    return free_map, total_map
+
+
+def iter_ccxt_balance_holdings(
+    balance: dict,
+) -> list[tuple[str, float]]:
+    """Return (currency_code, total_qty) for each wallet currency with balance."""
+    _, total_map = parse_ccxt_balance_maps(balance)
+    return [(code, qty) for code, qty in total_map.items() if qty > 1e-12]
+
 
 async def fetch_free_cash_from_gateway(
     execution_gateway, symbols: list[str], retry_cnt: int = 0, max_retries: int = 3
@@ -54,29 +93,14 @@ async def fetch_free_cash_from_gateway(
         )
         raise
 
-    logger.info(f"Raw balance response: {balance}")
-    free_map: dict[str, float] = {}
-    # ccxt balance may be shaped as: {'free': {...}, 'used': {...}, 'total': {...}}
-    try:
-        free_section = balance.get("free") if isinstance(balance, dict) else None
-    except Exception:
-        free_section = None
-
-    if isinstance(free_section, dict):
-        free_map = {str(k).upper(): float(v or 0.0) for k, v in free_section.items()}
-    else:
-        # fallback: per-ccy dicts: balance['USDT'] = {'free': x, 'used': y, 'total': z}
-        iterable = balance.items() if isinstance(balance, dict) else []
-        for k, v in iterable:
-            if isinstance(v, dict) and "free" in v:
-                try:
-                    free_map[str(k).upper()] = float(v.get("free") or 0.0)
-                except Exception:
-                    continue
-
-    # If balance structure is unrecognized, avoid returning zeros silently
-    if not isinstance(balance, dict) or (not free_map and free_section is None):
+    if not isinstance(balance, dict):
         raise ValueError("Unrecognized balance response shape from exchange")
+
+    free_map, total_map = parse_ccxt_balance_maps(balance)
+    if not free_map and not total_map:
+        raise ValueError("Unrecognized balance response shape from exchange")
+
+    logger.debug("Raw balance response: {balance}", balance=balance)
 
     logger.info(f"Parsed free balance map: {free_map}")
     # Derive quote currencies from symbols, fallback to common USD-stable quotes
@@ -95,38 +119,50 @@ async def fetch_free_cash_from_gateway(
     free_cash = 0.0
     total_cash = 0.0
 
-    # Sum up free and total cash from relevant quote currencies
+    # Sum quote-currency cash (IDR for Indodax spot, USDT for futures, etc.)
     if quotes:
         for q in quotes:
             free_cash += float(free_map.get(q, 0.0) or 0.0)
-            # Try to find total/equity in balance if available (often 'total' dict in CCXT)
-            # Hyperliquid/CCXT structure: balance[q]['total']
-            q_data = balance.get(q)
-            if isinstance(q_data, dict):
-                total_cash += float(q_data.get("total", 0.0) or 0.0)
-            else:
-                # Fallback if structure is flat or missing
-                total_cash += float(free_map.get(q, 0.0) or 0.0)
+            total_cash += float(total_map.get(q, free_map.get(q, 0.0)) or 0.0)
     else:
-        for q in ("USDT", "USD", "USDC"):
+        for q in ("USDT", "USD", "USDC", "IDR"):
             free_cash += float(free_map.get(q, 0.0) or 0.0)
-            q_data = balance.get(q)
-            if isinstance(q_data, dict):
-                total_cash += float(q_data.get("total", 0.0) or 0.0)
-            else:
-                total_cash += float(free_map.get(q, 0.0) or 0.0)
+            total_cash += float(total_map.get(q, free_map.get(q, 0.0)) or 0.0)
+
+    if free_cash == 0.0 and total_cash == 0.0:
+        nonzero = {k: v for k, v in total_map.items() if v > 1e-12}
+        if nonzero:
+            logger.info(
+                "Quote cash is 0 for {quotes} but wallet holds: {holdings}. "
+                "Deposit quote currency (e.g. IDR) to open new spot buys, or rely on "
+                "existing coin holdings for sells.",
+                quotes=quotes or ["USDT", "IDR"],
+                holdings=nonzero,
+            )
+        else:
+            logger.warning(
+                "Exchange wallet appears empty for quotes={quotes}. "
+                "Fund the account before live trading.",
+                quotes=quotes,
+            )
 
     logger.debug(
-        f"Synced balance from exchange: free_cash={free_cash}, total_cash={total_cash}, quotes={quotes}"
+        "Synced balance from exchange: free_cash={free_cash}, total_cash={total_cash}, quotes={quotes}",
+        free_cash=free_cash,
+        total_cash=total_cash,
+        quotes=quotes,
     )
 
     return float(free_cash), float(total_cash)
 
 
 async def fetch_positions_from_gateway(
-    execution_gateway, retry_cnt: int = 0, max_retries: int = 3
+    execution_gateway,
+    symbols: Optional[List[str]] = None,
+    retry_cnt: int = 0,
+    max_retries: int = 3,
 ) -> Dict[str, PositionSnapshot]:
-    """Fetch positions from exchange."""
+    """Fetch positions from exchange (derivatives or spot holdings)."""
     logger.info("Fetching positions for LIVE trading mode")
     try:
         if not hasattr(execution_gateway, "fetch_positions"):
@@ -134,7 +170,7 @@ async def fetch_positions_from_gateway(
                 f"Execution gateway {execution_gateway.__class__.__name__} "
                 "does not implement the required 'fetch_positions' method."
             )
-        raw_positions = await execution_gateway.fetch_positions()
+        raw_positions = await execution_gateway.fetch_positions(symbols)
     except Exception as e:
         if retry_cnt < max_retries:
             logger.warning(
@@ -144,7 +180,7 @@ async def fetch_positions_from_gateway(
                 random.uniform(retry_cnt, retry_cnt + 1)
             )  # jitter to prevent mass retry at the same time
             return await fetch_positions_from_gateway(
-                execution_gateway, retry_cnt + 1, max_retries
+                execution_gateway, symbols, retry_cnt + 1, max_retries
             )
         logger.error(
             f"Failed to fetch positions from exchange after {max_retries} retries.",
@@ -252,28 +288,18 @@ def extract_price_map(features: List[FeatureVector]) -> Dict[str, float]:
     return price_map
 
 
-def normalize_symbol(symbol: str) -> str:
+def normalize_symbol(symbol: str, exchange_id: Optional[str] = None) -> str:
     """Normalize symbol format for CCXT.
 
-    Examples:
-        BTC-USD -> BTC/USD:USD (spot)
-        BTC-USDT -> BTC/USDT:USDT (USDT futures on colon exchanges)
-        ETH-USD -> ETH/USD:USD (USD futures on colon exchanges)
-
-    Args:
-        symbol: Symbol in format 'BTC-USD', 'BTC-USDT', etc.
-
-    Returns:
-        Normalized CCXT symbol
+    Indodax spot pairs stay as BASE/IDR (no settlement suffix).
     """
-    # Replace dash with slash
-    base_symbol = symbol.replace("-", "/")
-
+    base_symbol = symbol.replace("-", "/").split(":")[0]
+    if (exchange_id or "").lower() == "indodax":
+        return base_symbol
     if ":" not in base_symbol:
         parts = base_symbol.split("/")
         if len(parts) == 2:
             base_symbol = f"{parts[0]}/{parts[1]}:{parts[1]}"
-
     return base_symbol
 
 

@@ -39,5 +39,6 @@ export const EXCHANGE_ICONS = {
   hyperliquid: HyperliquidPng,
   mexc: MexcPng,
   okx: OkxPng,
+  indodax: ValueCellAgentPng,
   virtual: ValueCellAgentPng,
 };

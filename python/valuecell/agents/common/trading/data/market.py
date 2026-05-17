@@ -5,7 +5,7 @@ from typing import List, Optional
 
 from loguru import logger
 
-from valuecell.agents.common.trading.data import binance_http
+from valuecell.agents.common.trading.data import binance_http, indodax_http
 from valuecell.agents.common.trading.models import (
     Candle,
     InstrumentRef,
@@ -49,27 +49,14 @@ class SimpleMarketDataSource(BaseMarketDataSource):
             self._exchange_id = exchange_id
 
     def _normalize_symbol(self, symbol: str) -> str:
-        """Normalize symbol format for specific exchanges.
-
-        For Hyperliquid: converts BTC-USDC to BTC/USDC:USDC (swap format)
-        For other exchanges: converts BTC-USDC to BTC/USDC:USDC
-
-        Args:
-            symbol: Symbol in format 'BTC-USDC', 'ETH-USDT', etc.
-
-        Returns:
-            Normalized CCXT symbol for the specific exchange
-        """
-        # Replace dash with slash
-        base_symbol = symbol.replace("-", "/")
-
-        # For most exchanges (especially those requiring settlement currency)
+        """Normalize symbol format for the active exchange."""
+        base_symbol = symbol.replace("-", "/").split(":")[0]
+        if self._exchange_id == "indodax":
+            return base_symbol
         if ":" not in base_symbol:
             parts = base_symbol.split("/")
             if len(parts) == 2:
-                # Add settlement currency (e.g., BTC/USDC -> BTC/USDC:USDC)
                 base_symbol = f"{parts[0]}/{parts[1]}:{parts[1]}"
-
         return base_symbol
 
     async def _get_binance_candles_urllib(
@@ -113,6 +100,45 @@ class SimpleMarketDataSource(BaseMarketDataSource):
         chunks = await asyncio.gather(*[_one(s) for s in symbols])
         return list(itertools.chain.from_iterable(chunks))
 
+    async def _get_indodax_candles_urllib(
+        self, symbols: List[str], interval: str, lookback: int
+    ) -> List[Candle]:
+        """Fetch spot IDR candles via Indodax tradingview/history_v2."""
+
+        async def _one(symbol: str) -> List[Candle]:
+            out: List[Candle] = []
+            try:
+                raw = await indodax_http.fetch_ohlcv(symbol, interval, lookback)
+                for row in raw:
+                    ts, open_v, high_v, low_v, close_v, vol = row[:6]
+                    out.append(
+                        Candle(
+                            ts=int(ts),
+                            instrument=InstrumentRef(
+                                symbol=symbol,
+                                exchange_id=self._exchange_id,
+                            ),
+                            open=float(open_v),
+                            high=float(high_v),
+                            low=float(low_v),
+                            close=float(close_v),
+                            volume=float(vol),
+                            interval=interval,
+                        )
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "Indodax urllib candles failed for {symbol} interval={interval}: {err}. "
+                    "Use a spot pair listed on Indodax (quote IDR), e.g. BTC/IDR.",
+                    symbol=symbol,
+                    interval=interval,
+                    err=exc,
+                )
+            return out
+
+        chunks = await asyncio.gather(*[_one(s) for s in symbols])
+        return list(itertools.chain.from_iterable(chunks))
+
     async def get_recent_candles(
         self, symbols: List[str], interval: str, lookback: int
     ) -> List[Candle]:
@@ -122,6 +148,18 @@ class SimpleMarketDataSource(BaseMarketDataSource):
             )
             logger.debug(
                 "Fetched {count} Binance urllib candles symbols={symbols} interval={interval}",
+                count=len(candles),
+                symbols=symbols,
+                interval=interval,
+            )
+            return candles
+
+        if self._exchange_id == "indodax":
+            candles = await self._get_indodax_candles_urllib(
+                symbols, interval, lookback
+            )
+            logger.debug(
+                "Fetched {count} Indodax urllib candles symbols={symbols} interval={interval}",
                 count=len(candles),
                 symbols=symbols,
                 interval=interval,
@@ -212,6 +250,26 @@ class SimpleMarketDataSource(BaseMarketDataSource):
         await asyncio.gather(*[_one(s) for s in symbols])
         return snapshot
 
+    async def _get_indodax_snapshot_urllib(
+        self, symbols: List[str]
+    ) -> MarketSnapShotType:
+        """Fetch tickers via Indodax public REST API."""
+        snapshot: MarketSnapShotType = {}
+
+        async def _one(symbol: str) -> None:
+            try:
+                ticker = await indodax_http.fetch_ticker(symbol)
+                snapshot[symbol] = {"price": ticker}
+            except Exception as exc:
+                logger.warning(
+                    "Indodax urllib ticker failed for {symbol}: {err}",
+                    symbol=symbol,
+                    err=exc,
+                )
+
+        await asyncio.gather(*[_one(s) for s in symbols])
+        return snapshot
+
     async def get_market_snapshot(self, symbols: List[str]) -> MarketSnapShotType:
         """Fetch latest prices for the given symbols using exchange endpoints."""
         if self._exchange_id == "binance":
@@ -223,13 +281,22 @@ class SimpleMarketDataSource(BaseMarketDataSource):
             )
             return snapshot
 
+        if self._exchange_id == "indodax":
+            snapshot = await self._get_indodax_snapshot_urllib(symbols)
+            logger.debug(
+                "Indodax urllib market snapshot for {count}/{total} symbols",
+                count=len(snapshot),
+                total=len(symbols),
+            )
+            return snapshot
+
         snapshot = defaultdict(dict)
 
         exchange_cls = get_exchange_cls(self._exchange_id)
         exchange = exchange_cls(_ccxt_client_config(self._exchange_id))
         try:
             for symbol in symbols:
-                sym = normalize_symbol(symbol)
+                sym = normalize_symbol(symbol, self._exchange_id)
                 try:
                     ticker = await exchange.fetch_ticker(sym)
                     snapshot[symbol]["price"] = ticker

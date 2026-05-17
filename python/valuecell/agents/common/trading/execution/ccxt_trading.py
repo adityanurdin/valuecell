@@ -112,6 +112,8 @@ class CCXTExecutionGateway(BaseExecutionGateway):
         - Binance: map 'swap' to 'future' (USDT-M futures)
         - Others: keep configured default_type
         """
+        if self.exchange_id == "indodax":
+            return "spot"
         if self.exchange_id == "binance" and self.default_type == "swap":
             return "future"
         return self.default_type
@@ -1686,6 +1688,112 @@ class CCXTExecutionGateway(BaseExecutionGateway):
 
         return {"free": free, "used": used, "total": total}
 
+    _SPOT_QUOTE_CURRENCIES = frozenset(
+        {
+            "IDR",
+            "USDT",
+            "USD",
+            "USDC",
+            "BUSD",
+            "FDUSD",
+            "EUR",
+            "GBP",
+            "AUD",
+            "JPY",
+            "FREE",
+            "USED",
+            "TOTAL",
+            "INFO",
+        }
+    )
+
+    def _spot_symbol_for_base(self, exchange: ccxt.Exchange, base: str) -> Optional[str]:
+        """Resolve a CCXT spot symbol for a wallet currency code."""
+        base_upper = base.upper()
+        quote_order = ("IDR", "USDT", "USDC", "USD") if self.exchange_id == "indodax" else (
+            "USDT",
+            "USDC",
+            "USD",
+            "IDR",
+        )
+        for quote in quote_order:
+            candidate = f"{base_upper}/{quote}"
+            if candidate in exchange.markets:
+                return candidate
+        for symbol, market in exchange.markets.items():
+            if not market.get("spot"):
+                continue
+            if str(market.get("base", "")).upper() == base_upper:
+                return symbol
+        return None
+
+    async def _fetch_spot_holdings_as_positions(
+        self, symbols: Optional[List[str]] = None
+    ) -> List[Dict]:
+        """Map non-quote wallet balances to long spot positions."""
+        exchange = await self._get_exchange()
+        balance = await exchange.fetch_balance()
+
+        requested_symbols: Optional[set[str]] = None
+        requested_bases: Optional[set[str]] = None
+        if symbols:
+            requested_symbols = set()
+            requested_bases = set()
+            for sym in symbols:
+                norm = self._normalize_symbol(sym).split(":")[0]
+                requested_symbols.add(norm)
+                base_part = norm.split("/")[0]
+                requested_bases.add(base_part.upper())
+
+        from valuecell.agents.common.trading.utils import iter_ccxt_balance_holdings
+
+        positions: List[Dict] = []
+        for code, qty in iter_ccxt_balance_holdings(balance):
+            if code in self._SPOT_QUOTE_CURRENCIES:
+                continue
+            if requested_bases is not None and code not in requested_bases:
+                continue
+
+            symbol = self._spot_symbol_for_base(exchange, code)
+            if symbol is None:
+                continue
+            symbol_key = symbol.split(":")[0]
+            if requested_symbols is not None and symbol_key not in requested_symbols:
+                continue
+
+            mark = 0.0
+            try:
+                ticker = await exchange.fetch_ticker(symbol)
+                mark = float(ticker.get("last") or ticker.get("close") or 0.0)
+            except Exception as exc:
+                logger.debug(
+                    "Spot holdings: no ticker for {symbol}: {err}",
+                    symbol=symbol,
+                    err=exc,
+                )
+
+            notional = qty * mark if mark > 0 else None
+            positions.append(
+                {
+                    "symbol": symbol_key,
+                    "side": "long",
+                    "contracts": qty,
+                    "entryPrice": None,
+                    "markPrice": mark if mark > 0 else None,
+                    "unrealizedPnl": 0.0,
+                    "notional": notional,
+                    "leverage": 1,
+                    "timestamp": None,
+                }
+            )
+
+        logger.info(
+            "Spot holdings as positions on {exchange}: {count} assets",
+            exchange=self.exchange_id,
+            count=len(positions),
+        )
+        return positions
+
     async def _fetch_binance_positions_urllib(
         self, exchange: Optional[ccxt.Exchange] = None
     ) -> List[Dict]:
@@ -1925,6 +2033,13 @@ class CCXTExecutionGateway(BaseExecutionGateway):
         futures_ok = False
         spot_ok = False
 
+        if self.exchange_id == "indodax":
+            try:
+                await exchange.fetch_balance()
+                return True, "Success! Indodax spot API access verified."
+            except Exception as e:
+                return False, self._format_exchange_error(e)
+
         if self.exchange_id == "binance":
             # Spot first: works with typical trading keys; futures may be disabled.
             try:
@@ -2080,13 +2195,11 @@ class CCXTExecutionGateway(BaseExecutionGateway):
             List of position dictionaries
         """
         exchange = await self._get_exchange()
-
-        # Check if exchange supports fetching positions
-        if not exchange.has.get("fetchPositions"):
-            return []
-
         mtype = self._choose_default_type_for_exchange()
-        if self.exchange_id == "binance" and mtype == "spot":
+        if mtype == "spot":
+            return await self._fetch_spot_holdings_as_positions(symbols)
+
+        if not exchange.has.get("fetchPositions"):
             return []
 
         # Normalize symbols if provided

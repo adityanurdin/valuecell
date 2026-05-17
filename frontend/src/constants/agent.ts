@@ -142,3 +142,31 @@ export const TRADING_SYMBOLS: string[] = [
   "FET/USDT",
   "RENDER/USDT",
 ];
+
+/** Indodax spot pairs (quote IDR). Min trade ~50,000 IDR per pair. */
+export const INDODAX_TRADING_SYMBOLS: string[] = [
+  "BTC/IDR",
+  "ETH/IDR",
+  "BNB/IDR",
+  "SOL/IDR",
+  "XRP/IDR",
+  "DOGE/IDR",
+  "ADA/IDR",
+  "DOT/IDR",
+  "LINK/IDR",
+  "MATIC/IDR",
+  "USDT/IDR",
+];
+
+export function getTradingSymbolsForExchange(
+  exchangeId?: string,
+  tradingMode?: "live" | "virtual",
+): string[] {
+  if (tradingMode === "virtual") {
+    return TRADING_SYMBOLS;
+  }
+  if ((exchangeId || "").toLowerCase() === "indodax") {
+    return INDODAX_TRADING_SYMBOLS;
+  }
+  return TRADING_SYMBOLS;
+}

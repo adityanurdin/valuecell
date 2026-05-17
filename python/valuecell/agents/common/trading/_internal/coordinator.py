@@ -135,7 +135,7 @@ class DefaultDecisionCoordinator(DecisionCoordinator):
                     portfolio.free_cash = float(free_cash)
                 try:
                     positions = await fetch_positions_from_gateway(
-                        self._execution_gateway
+                        self._execution_gateway, self._symbols
                     )
                 except Exception as e:
                     logger.warning(
@@ -149,7 +149,18 @@ class DefaultDecisionCoordinator(DecisionCoordinator):
                         if value.unrealized_pnl is not None
                     )
                     portfolio.total_unrealized_pnl = total_unrealized_pnl
-                    if total_cash > 0:
+                    holdings_notional = sum(
+                        float(p.notional or 0.0) for p in positions.values()
+                    )
+                    portfolio.gross_exposure = sum(
+                        abs(float(p.notional or 0.0)) for p in positions.values()
+                    )
+                    portfolio.net_exposure = holdings_notional
+                    if (
+                        self._request.exchange_config.market_type == MarketType.SPOT
+                    ):
+                        portfolio.total_value = float(free_cash) + holdings_notional
+                    elif total_cash > 0:
                         portfolio.total_value = total_cash + total_unrealized_pnl
         except Exception:
             # If syncing fails, continue with existing portfolio view

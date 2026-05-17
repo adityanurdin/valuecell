@@ -32,7 +32,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { TRADING_SYMBOLS } from "@/constants/agent";
+import {
+  getTradingSymbolsForExchange,
+  TRADING_SYMBOLS,
+} from "@/constants/agent";
 import { withForm } from "@/hooks/use-form";
 import type { Strategy, StrategyPrompt } from "@/types/strategy";
 
@@ -49,8 +52,13 @@ export const TradingStrategyForm = withForm({
   props: {
     prompts: [] as StrategyPrompt[],
     tradingMode: "live" as "live" | "virtual",
+    exchangeId: "",
   },
-  render({ form, prompts, tradingMode }) {
+  render({ form, prompts, tradingMode, exchangeId }) {
+    const symbolOptions = getTradingSymbolsForExchange(
+      exchangeId,
+      tradingMode,
+    );
     const { t } = useTranslation();
     const { mutateAsync: createStrategyPrompt } = useCreateStrategyPrompt();
     const { mutate: deleteStrategyPrompt } = useDeleteStrategyPrompt();
@@ -92,9 +100,9 @@ export const TradingStrategyForm = withForm({
           listeners={{
             onChange: ({ value }: { value: Strategy["strategy_type"] }) => {
               if (value === "GridStrategy") {
-                form.setFieldValue("symbols", [TRADING_SYMBOLS[0]]);
+                form.setFieldValue("symbols", [symbolOptions[0]]);
               } else {
-                form.setFieldValue("symbols", TRADING_SYMBOLS);
+                form.setFieldValue("symbols", symbolOptions);
               }
             },
           }}
@@ -167,7 +175,7 @@ export const TradingStrategyForm = withForm({
                       maxSelected={
                         strategyType === "GridStrategy" ? 1 : undefined
                       }
-                      options={TRADING_SYMBOLS}
+                      options={symbolOptions}
                       value={field.state.value}
                       onValueChange={(value) => field.handleChange(value)}
                       placeholder={t(

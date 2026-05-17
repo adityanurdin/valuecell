@@ -42,6 +42,37 @@ from valuecell.utils.uuid import generate_conversation_id
 _AUTORESUME_STARTED = False
 
 
+def _live_exchange_credentials_missing(config_dict: dict) -> bool:
+    """Return True when a persisted LIVE config cannot reconnect to the exchange."""
+    exchange = config_dict.get("exchange_config") or {}
+    if exchange.get("trading_mode") != "live":
+        return False
+    exchange_id = str(exchange.get("exchange_id") or "").lower()
+    if exchange_id == "hyperliquid":
+        return not (exchange.get("wallet_address") and exchange.get("private_key"))
+    return not (exchange.get("api_key") and exchange.get("secret_key"))
+
+
+def _sanitize_resume_config(config_dict: dict) -> dict:
+    """Fix persisted config values that block resume validation."""
+    cfg = dict(config_dict)
+    trading = dict(cfg.get("trading_config") or {})
+    try:
+        free_cash = float(trading.get("initial_free_cash") or 0.0)
+    except (TypeError, ValueError):
+        free_cash = 0.0
+    if free_cash <= 0.0:
+        try:
+            fallback = float(
+                trading.get("initial_capital") or trading.get("initial_free_cash") or 1.0
+            )
+        except (TypeError, ValueError):
+            fallback = 1.0
+        trading["initial_free_cash"] = max(fallback, 1.0)
+        cfg["trading_config"] = trading
+    return cfg
+
+
 async def auto_resume_strategies(
     orchestrator: AgentOrchestrator,
     max_strategies: Optional[int] = None,
@@ -89,8 +120,17 @@ async def _resume_one(orchestrator: AgentOrchestrator, strategy_row: Strategy) -
         metadata = strategy_row.strategy_metadata or {}
         agent_name = metadata.get("agent_name")
 
-        # Parse request; tolerate partial configs
-        request = UserRequest.model_validate(config_dict)
+        if _live_exchange_credentials_missing(config_dict):
+            logger.warning(
+                "Auto-resume skipped for strategy_id={}: LIVE exchange API keys are "
+                "not stored in the database (security). Start this strategy again from "
+                "the UI with your API key and secret.",
+                strategy_id,
+            )
+            return
+
+        # Parse request; tolerate partial configs (e.g. zero balance from empty wallet)
+        request = UserRequest.model_validate(_sanitize_resume_config(config_dict))
         if request.trading_config.strategy_id is None and strategy_id:
             request.trading_config.strategy_id = strategy_id
 

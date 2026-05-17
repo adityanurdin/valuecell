@@ -54,7 +54,13 @@ export const createExchangeSchema = (t: TFunction) =>
     z.object({
       ...baseStep2Fields,
       trading_mode: z.literal("live"),
-      exchange_id: z.enum(["binance", "blockchaincom", "gate", "mexc"]),
+      exchange_id: z.enum([
+        "binance",
+        "blockchaincom",
+        "gate",
+        "mexc",
+        "indodax",
+      ]),
       api_key: z.string().min(1, t("validation.exchange.apiKeyRequired")),
       secret_key: z.string().min(1, t("validation.exchange.secretKeyRequired")),
     }),

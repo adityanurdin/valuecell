@@ -22,6 +22,10 @@ export const EXCHANGE_OPTIONS = [
     label: "Binance",
   },
   {
+    value: "indodax",
+    label: "Indodax",
+  },
+  {
     value: "hyperliquid",
     label: "Hyperliquid",
   },
@@ -59,6 +63,12 @@ const getPlaceholder = (
         return t("strategy.form.exchanges.placeholder.binance.apiKey");
       if (fieldType === "secret_key")
         return t("strategy.form.exchanges.placeholder.binance.secretKey");
+      break;
+    case "indodax":
+      if (fieldType === "api_key")
+        return "Indodax API Key";
+      if (fieldType === "secret_key")
+        return "Indodax API Secret";
       break;
     case "okx":
       if (fieldType === "api_key")

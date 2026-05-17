@@ -15,6 +15,7 @@ from ..history import (
     InMemoryHistoryRecorder,
     RollingDigestBuilder,
 )
+from ..data import indodax_http
 from ..models import Constraints, DecisionCycleResult, TradingMode, UserRequest
 from ..portfolio.in_memory import InMemoryPortfolioService
 from ..utils import fetch_free_cash_from_gateway, fetch_positions_from_gateway
@@ -34,7 +35,9 @@ async def _create_execution_gateway(request: UserRequest) -> BaseExecutionGatewa
             request.trading_config.initial_free_cash = float(free_cash)
             request.trading_config.initial_capital = float(total_cash)
             request.trading_config.initial_positions = (
-                await fetch_positions_from_gateway(execution_gateway)
+                await fetch_positions_from_gateway(
+                    execution_gateway, request.trading_config.symbols
+                )
             )
     except Exception:
         # Log the error but continue - user might have set initial portfolio manually
@@ -148,10 +151,32 @@ async def create_strategy_runtime(
 
     free_cash = free_cash_override or request.trading_config.initial_free_cash or 0.0
     total_cash = total_cash_override or request.trading_config.initial_capital or 0.0
-    constraints = Constraints(
-        max_positions=request.trading_config.max_positions,
-        max_leverage=request.trading_config.max_leverage,
-    )
+    constraint_kwargs: dict = {
+        "max_positions": request.trading_config.max_positions,
+        "max_leverage": request.trading_config.max_leverage,
+    }
+    if (request.exchange_config.exchange_id or "").lower() == "indodax":
+        try:
+            indodax_limits = await indodax_http.build_strategy_constraints(
+                request.trading_config.symbols
+            )
+            constraint_kwargs.update(
+                {k: v for k, v in indodax_limits.items() if v is not None}
+            )
+            logger.info(
+                "Indodax constraints for strategy: min_notional={min_notional} IDR, "
+                "min_trade_qty={min_trade_qty}, quantity_step={quantity_step}",
+                min_notional=constraint_kwargs.get("min_notional"),
+                min_trade_qty=constraint_kwargs.get("min_trade_qty"),
+                quantity_step=constraint_kwargs.get("quantity_step"),
+            )
+        except Exception:
+            logger.warning(
+                "Failed to load Indodax trade constraints from /api/pairs; "
+                "using leverage/position limits only",
+                exc_info=True,
+            )
+    constraints = Constraints(**constraint_kwargs)
     portfolio_service = InMemoryPortfolioService(
         free_cash=free_cash,
         total_cash=total_cash,

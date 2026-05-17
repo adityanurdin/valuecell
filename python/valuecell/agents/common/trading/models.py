@@ -316,6 +316,21 @@ class UserRequest(BaseModel):
                 ml = float(DEFAULT_MAX_LEVERAGE)
             ex_cfg["market_type"] = MarketType.SPOT if ml <= 1.0 else MarketType.SWAP
             values["exchange_config"] = ex_cfg
+
+        ex_id = str((ex_cfg.get("exchange_id") or "")).lower()
+        if ex_id == "indodax":
+            ex_cfg["market_type"] = MarketType.SPOT
+            values["exchange_config"] = ex_cfg
+            tr_cfg = dict(values.get("trading_config") or {})
+            ml_raw = tr_cfg.get("max_leverage")
+            try:
+                ml = float(ml_raw) if ml_raw is not None else 1.0
+            except (TypeError, ValueError):
+                ml = 1.0
+            if ml > 1.0:
+                tr_cfg["max_leverage"] = 1.0
+                values["trading_config"] = tr_cfg
+
         return values
 
 

@@ -1,0 +1,65 @@
+# ValueCell — run with Docker Compose
+#
+# Quick start:
+#   cp .env.example .env          # add OPENROUTER_API_KEY, etc.
+#   docker compose up --build -d
+#
+# Open UI:  http://localhost:1420
+# API:      http://localhost:8000/api/v1/healthz
+#
+# Data persists in named volumes (database + config/.env copy).
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    container_name: valuecell-backend
+    restart: unless-stopped
+    ports:
+      - "${API_PORT:-8000}:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      API_HOST: "0.0.0.0"
+      API_PORT: "8000"
+      APP_ENVIRONMENT: "${APP_ENVIRONMENT:-production}"
+      AGENT_DEBUG_MODE: "${AGENT_DEBUG_MODE:-false}"
+      LANG: "${LANG:-en}"
+      TIMEZONE: "${TIMEZONE:-Asia/Jakarta}"
+      VALUECELL_DATABASE_URL: "sqlite:////data/valuecell.db"
+      VALUECELL_DB_PATH: "/data/valuecell.db"
+      # Provider keys (override via .env)
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      GOOGLE_API_KEY: "${GOOGLE_API_KEY:-}"
+    volumes:
+      - valuecell-data:/data
+      - valuecell-config:/root/.config/valuecell
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/v1/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+      args:
+        VITE_API_BASE_URL: /api/v1
+    container_name: valuecell-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-1420}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  valuecell-data:
+    name: valuecell-data
+  valuecell-config:
+    name: valuecell-config

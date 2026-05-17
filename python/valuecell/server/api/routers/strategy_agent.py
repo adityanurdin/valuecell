@@ -264,9 +264,10 @@ def create_strategy_agent_router() -> APIRouter:
             # Use enum .value — str(MarketType.SWAP) is "MarketType.SWAP", not "swap"
             market_type = (request.market_type or MarketType.SWAP).value
             # Connection test uses spot CCXT routes for Binance (time sync, account).
+            exchange_lower = (request.exchange_id or "").lower()
             ccxt_market_type = (
                 "spot"
-                if (request.exchange_id or "").lower() == "binance"
+                if exchange_lower in ("binance", "indodax")
                 else market_type
             )
             gateway = None
@@ -282,7 +283,10 @@ def create_strategy_agent_router() -> APIRouter:
                     market_type=ccxt_market_type,
                     preload_markets=False,
                 )
-                require_futures = market_type in ("swap", "future")
+                require_futures = (
+                    market_type in ("swap", "future")
+                    and exchange_lower != "indodax"
+                )
                 is_connected, message = await gateway.test_connection(
                     require_futures=require_futures
                 )

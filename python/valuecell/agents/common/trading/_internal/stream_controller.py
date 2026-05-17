@@ -146,7 +146,7 @@ class StreamController:
                         )
                         else runtime.request.trading_config.initial_free_cash
                     )
-                    if initial_free_cash is not None:
+                    if initial_free_cash is not None and float(initial_free_cash) > 0:
                         if strategy_persistence.update_initial_capital(
                             self.strategy_id,
                             float(initial_free_cash),
@@ -177,6 +177,12 @@ class StreamController:
                                 "Failed to update DB initial capital for strategy={} (LIVE mode)",
                                 self.strategy_id,
                             )
+                    elif is_live and is_first_snapshot:
+                        logger.warning(
+                            "Skipping DB initial capital update for strategy={}: "
+                            "exchange free balance is 0 (deposit quote currency first)",
+                            self.strategy_id,
+                        )
             except Exception:
                 logger.exception(
                     "Error while updating DB initial capital from live balance for {}",
