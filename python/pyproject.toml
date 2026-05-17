@@ -23,11 +23,9 @@ dependencies = [
     "edgartools>=4.12.2",
     "sqlalchemy>=2.0.43",
     "aiosqlite>=0.19.0",
-    "unstructured>=0.18.15",
     "markdown>=3.9",
     "loguru>=0.7.3",
     "aiofiles>=24.1.0",
-    "crawl4ai>=0.7.4",
     "ccxt>=4.5.15",
     "baostock>=0.8.9",
     "func-timeout>=4.3.5",
@@ -35,8 +33,16 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# ResearchAgent vector search (not available on ARMv6 / Raspberry Pi B+)
+# Full desktop install (not available on ARMv6 / Raspberry Pi B+):
+#   uv sync --extra full
+full = [
+    "lancedb>=0.25.0",
+    "crawl4ai>=0.7.4",
+    "unstructured>=0.18.15",
+]
+# Backward-compatible aliases
 research = ["lancedb>=0.25.0"]
+scraping = ["crawl4ai>=0.7.4", "unstructured>=0.18.15"]
 dev = [
     "ruff",
     "pytest>=7.4.0",

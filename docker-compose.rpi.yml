@@ -10,6 +10,8 @@
 #
 # Pi 3/4: may build on-device with Bun, or use export tarball too.
 #
+# Backend excludes optional `full` extras (lancedb, crawl4ai/patchright) — required for ARMv6.
+#
 # Pi 4 / 64-bit with 2GB+ RAM — optional in-docker frontend build:
 #   FRONTEND_DOCKERFILE=docker/frontend.Dockerfile ./scripts/pi-deploy.sh
 #

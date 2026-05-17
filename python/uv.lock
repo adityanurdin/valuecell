@@ -3651,7 +3651,6 @@ dependencies = [
     { name = "akshare" },
     { name = "baostock" },
     { name = "ccxt" },
-    { name = "crawl4ai" },
     { name = "edgartools" },
     { name = "fastapi" },
     { name = "func-timeout" },
@@ -3664,7 +3663,6 @@ dependencies = [
     { name = "pytz" },
     { name = "requests" },
     { name = "sqlalchemy" },
-    { name = "unstructured" },
     { name = "uvicorn" },
     { name = "yfinance" },
 ]
@@ -3677,8 +3675,17 @@ dev = [
     { name = "pytest-cov" },
     { name = "ruff" },
 ]
+full = [
+    { name = "crawl4ai" },
+    { name = "lancedb" },
+    { name = "unstructured" },
+]
 research = [
     { name = "lancedb" },
+]
+scraping = [
+    { name = "crawl4ai" },
+    { name = "unstructured" },
 ]
 
 [package.dev-dependencies]
@@ -3713,11 +3720,13 @@ requires-dist = [
     { name = "akshare", specifier = ">=1.17.87" },
     { name = "baostock", specifier = ">=0.8.9" },
     { name = "ccxt", specifier = ">=4.5.15" },
-    { name = "crawl4ai", specifier = ">=0.7.4" },
+    { name = "crawl4ai", marker = "extra == 'full'", specifier = ">=0.7.4" },
+    { name = "crawl4ai", marker = "extra == 'scraping'", specifier = ">=0.7.4" },
     { name = "diff-cover", marker = "extra == 'dev'", specifier = ">=9.0.0" },
     { name = "edgartools", specifier = ">=4.12.2" },
     { name = "fastapi", specifier = ">=0.104.0" },
     { name = "func-timeout", specifier = ">=4.3.5" },
+    { name = "lancedb", marker = "extra == 'full'", specifier = ">=0.25.0" },
     { name = "lancedb", marker = "extra == 'research'", specifier = ">=0.25.0" },
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "markdown", specifier = ">=3.9" },
@@ -3732,11 +3741,12 @@ requires-dist = [
     { name = "requests", specifier = ">=2.32.5" },
     { name = "ruff", marker = "extra == 'dev'" },
     { name = "sqlalchemy", specifier = ">=2.0.43" },
-    { name = "unstructured", specifier = ">=0.18.15" },
+    { name = "unstructured", marker = "extra == 'full'", specifier = ">=0.18.15" },
+    { name = "unstructured", marker = "extra == 'scraping'", specifier = ">=0.18.15" },
     { name = "uvicorn", specifier = ">=0.24.0" },
     { name = "yfinance", specifier = ">=0.2.65" },
 ]
-provides-extras = ["research", "dev"]
+provides-extras = ["full", "research", "scraping", "dev"]
 
 [package.metadata.requires-dev]
 dev = [
